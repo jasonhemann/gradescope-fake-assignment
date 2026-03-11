@@ -1,7 +1,7 @@
 [project]
 name = "gradescope-fake-assignment"
 version = "0.1.0"
-description = "Default template for PDM package"
+description = "Generate dummy Gradescope submissions from a class roster"
 authors = [
     {name = "Jason Hemann", email = "jason.hemann@gmail.com"},
 ]
