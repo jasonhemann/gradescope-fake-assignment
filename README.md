@@ -6,27 +6,36 @@ Create a dummy PDF template and a combined PDF of submissions from a class roste
 
 ## **Quick Start**
 
-### **1. Build the Executable**
-Run the following to create a standalone executable:
+### **1. Sync Dependencies (Developers)**
+Use `uv` to create/update the project environment:
 ```bash
-make build
+make sync
 ```
-
-The executable will be created in the `./dist/` directory as `gradescope_fake_assignment`.
 
 ---
 
-### **2. Test the Program**
-Run the test cases provided in `tests/resources/`:
+### **2. Run Smoke Tests**
+Run the built-in smoke checks against sample roster inputs:
 ```bash
 make test
 ```
 
-This validates that the program works as expected using sample inputs.
+This validates a successful roster run and malformed-roster error handling.
 
 ---
 
-### **3. Install the Executable**
+### **3. Build the Executable**
+Create a standalone executable with PyInstaller:
+```bash
+make build
+```
+
+The executable will be created in `./dist/` as `gradescope_fake_assignment`.
+Users can run that binary directly on the same OS/architecture without setting up `uv`, a virtual environment, or project dependencies.
+
+---
+
+### **4. Install the Executable**
 Install the executable to `/usr/local/bin` for system-wide use:
 ```bash
 make install
@@ -39,7 +48,7 @@ gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --fo
 
 ---
 
-### **4. Clean Up**
+### **5. Clean Up**
 Remove all temporary files, build artifacts, and cache:
 ```bash
 make clean
@@ -72,7 +81,7 @@ uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests
 ### **3. Manual Build**
 To manually create the executable without `make`:
 ```bash
-pyinstaller --onefile src/gradescope_fake_assignment/__main__.py --name gradescope_fake_assignment
+uv run --python 3.13 pyinstaller --onefile src/gradescope_fake_assignment/__main__.py --name gradescope_fake_assignment
 ```
 
 The executable will be created in the `./dist/` directory.
@@ -85,7 +94,7 @@ sudo mv ./dist/gradescope_fake_assignment /usr/local/bin/
 
 ### **5. Manual Testing**
 
-Test cases are provided in the `tests/resources/` directory.
+Use `make test` for the default smoke checks.
 
 ### **Examples**
 1. Run the program with a valid test roster:
@@ -105,7 +114,7 @@ Here’s an overview of the project layout:
 
 ```plaintext
 project-root/
-├── Makefile              # Build, test, deploy, and clean tasks
+├── Makefile              # Sync, smoke-test, build, install, and clean tasks
 ├── README.md             # Project documentation
 ├── pyproject.toml        # Dependency and project configuration
 ├── uv.lock               # Dependency lock file
