@@ -1,107 +1,157 @@
+from __future__ import annotations
+
 import argparse
-import os
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, cast
+
 import pandas as pd
+from pandas import DataFrame
+from pikepdf import Pdf
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
-from pikepdf import Pdf
 
-def parse_arguments():
+type RosterFormat = Literal["standard", "custom"]
+
+
+@dataclass(slots=True)
+class CliArgs:
+    assignment_name: str
+    csv_path: Path
+    roster_format: RosterFormat
+    output_dir: Path
+
+
+def _coerce_str(value: object, default: str = "") -> str:
+    if value is None:
+        return default
+    return str(value)
+
+
+def _coerce_format(value: str) -> RosterFormat:
+    if value not in {"standard", "custom"}:
+        raise ValueError(f"Unsupported roster format: {value}")
+    return cast(RosterFormat, value)
+
+
+def parse_arguments(argv: Sequence[str] | None = None) -> CliArgs:
     parser = argparse.ArgumentParser(description="Generate Gradescope PDF submissions.")
-    parser.add_argument("assignment_name", type=str, help="Name of the assignment.")
-    parser.add_argument("csv_path", type=str, help="Path to the CSV file with student roster.")
-    parser.add_argument("--format", type=str, choices=["standard", "custom"], default="standard",
-                        help="Specify the format of the roster CSV.")
-    parser.add_argument("--output_dir", type=str, default=".", help="Directory to save output PDFs.")
-    return parser.parse_args()
+    _ = parser.add_argument("assignment_name", type=str, help="Name of the assignment.")
+    _ = parser.add_argument("csv_path", type=str, help="Path to the CSV file with student roster.")
+    _ = parser.add_argument(
+        "--format",
+        type=str,
+        choices=["standard", "custom"],
+        default="standard",
+        help="Specify the format of the roster CSV.",
+    )
+    _ = parser.add_argument(
+        "--output_dir", type=str, default=".", help="Directory to save output PDFs."
+    )
+    namespace = parser.parse_args(argv)
+    return CliArgs(
+        assignment_name=_coerce_str(getattr(namespace, "assignment_name", ""), ""),
+        csv_path=Path(_coerce_str(getattr(namespace, "csv_path", ""), "")),
+        roster_format=_coerce_format(_coerce_str(getattr(namespace, "format", "standard"), "standard")),
+        output_dir=Path(_coerce_str(getattr(namespace, "output_dir", "."), ".")),
+    )
 
-def load_roster(csv_path, format):
-    if not os.path.exists(csv_path):
+
+def _names_from_standard_roster(roster: DataFrame) -> list[str]:
+    first_name_series = roster["First Name"].fillna("").astype(str)
+    last_name_series = roster["Last Name"].fillna("").astype(str)
+    combined_names = (first_name_series + " " + last_name_series).str.strip()
+    return [name for name in combined_names.tolist() if name]
+
+
+def _names_from_custom_roster(roster: DataFrame) -> list[str]:
+    if "Name" in roster.columns:
+        source_column = "Name"
+    elif "Full Name" in roster.columns:
+        source_column = "Full Name"
+    else:
+        raise ValueError("CSV file is missing the required column(s): Name")
+    return [
+        name for name in roster[source_column].fillna("").astype(str).str.strip().tolist() if name
+    ]
+
+
+def load_roster(csv_path: Path, roster_format: RosterFormat) -> list[str]:
+    if not csv_path.exists():
         raise FileNotFoundError(f"CSV file '{csv_path}' does not exist.")
 
-    # Define required columns for each format
-    required_columns = ["First Name", "Last Name"] if format == "standard" else ["Name"]
-
-    # Read the CSV and validate headers without reloading
     roster = pd.read_csv(csv_path)
-    missing_columns = [col for col in required_columns if col not in roster.columns]
-    if missing_columns:
-        raise ValueError(f"CSV file is missing the required column(s): {', '.join(missing_columns)}")
+    if roster_format == "standard":
+        missing_columns = [col for col in ("First Name", "Last Name") if col not in roster.columns]
+        if missing_columns:
+            raise ValueError(
+                f"CSV file is missing the required column(s): {', '.join(missing_columns)}"
+            )
+        return _names_from_standard_roster(roster)
+    return _names_from_custom_roster(roster)
 
-    # Extract names based on format
-    if format == "standard":
-        roster["Name"] = roster["First Name"] + " " + roster["Last Name"]
-    else:
-        roster.rename(columns={"Full Name": "Name"}, inplace=True)
 
-    return roster["Name"].tolist()
+def create_template_pdf(assignment_name: str, output_path: Path) -> None:
+    pdf_canvas = canvas.Canvas(str(output_path), pagesize=LETTER)
+    pdf_canvas.drawString(100, 700, f"Assignment: {assignment_name}")
+    pdf_canvas.drawString(100, 650, "Student:")
+    pdf_canvas.line(150, 645, 400, 645)
+    pdf_canvas.showPage()
+    pdf_canvas.save()
 
-def create_template_pdf(assignment_name, output_path):
-    c = canvas.Canvas(output_path, pagesize=LETTER)
-    c.drawString(100, 700, f"Assignment: {assignment_name}")
-    c.drawString(100, 650, "Student:")
-    c.line(150, 645, 400, 645)  # Draws a long underline for the template
-    c.showPage()
-    c.save()
 
-def create_student_pdf(assignment_name, student_name, output_path):
-    c = canvas.Canvas(output_path, pagesize=LETTER)
-    c.drawString(100, 700, f"Assignment: {assignment_name}")
-    c.drawString(100, 650, "Student:")
+def create_student_pdf(assignment_name: str, student_name: str, output_path: Path) -> None:
+    pdf_canvas = canvas.Canvas(str(output_path), pagesize=LETTER)
+    pdf_canvas.drawString(100, 700, f"Assignment: {assignment_name}")
+    pdf_canvas.drawString(100, 650, "Student:")
+    text_width = pdf_canvas.stringWidth(student_name, "Helvetica", 12)
+    pdf_canvas.drawString(150, 650, student_name)
+    pdf_canvas.line(150, 645, 150 + text_width, 645)
+    pdf_canvas.showPage()
+    pdf_canvas.save()
 
-    text_width = c.stringWidth(student_name, "Helvetica", 12)
-    c.drawString(150, 650, student_name)  # Place student name at starting position
-    c.line(150, 645, 150 + text_width, 645)  # Underline of exact width below name
-    c.showPage()
-    c.save()
 
-def combine_pdfs(student_names, assignment_name, output_dir):
-    # Ensure submissions.pdf is safely overwritten at the end of processing
-    combined_pdf_path = f"{output_dir}/submissions.pdf"
-    temp_student_pdfs = []
-
+def combine_pdfs(student_names: list[str], assignment_name: str, output_dir: Path) -> Path:
+    combined_pdf_path = output_dir / "submissions.pdf"
+    temp_student_pdfs: list[Path] = []
     combined_pdf = Pdf.new()
+
     for idx, student_name in enumerate(student_names):
         safe_student_name = student_name.replace(" ", "_").replace("/", "_")
-        student_pdf_path = f"{output_dir}/{safe_student_name}_{idx}_submission.pdf"
-        temp_student_pdfs.append(student_pdf_path)  # Track for cleanup
-
-        # Create individual student PDF and add it to combined PDF
+        student_pdf_path = output_dir / f"{safe_student_name}_{idx}_submission.pdf"
+        temp_student_pdfs.append(student_pdf_path)
         create_student_pdf(assignment_name, student_name, student_pdf_path)
         with Pdf.open(student_pdf_path) as student_pdf:
             combined_pdf.pages.append(student_pdf.pages[0])
 
-    # Save combined PDF after successfully adding all pages
     combined_pdf.save(combined_pdf_path)
 
-    # Delete temporary student PDFs
-    for pdf in temp_student_pdfs:
-        os.remove(pdf)
+    for pdf_path in temp_student_pdfs:
+        if pdf_path.exists():
+            pdf_path.unlink()
 
     print(f"Submissions PDF created at: {combined_pdf_path}")
+    return combined_pdf_path
 
-def main():
+
+def main(argv: Sequence[str] | None = None) -> int:
     print("Generating Gradescope PDFs...")
-    args = parse_arguments()
+    args = parse_arguments(argv)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Ensure output directory exists
-    if not os.path.exists(args.output_dir):
-        print(f"Output directory '{args.output_dir}' does not exist. Creating it...")
-        os.makedirs(args.output_dir)
-
-    # Load student names from CSV roster
     try:
-        student_names = load_roster(args.csv_path, args.format)
-    except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}")
-        return
+        student_names = load_roster(args.csv_path, args.roster_format)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error: {exc}")
+        return 1
 
-    # Create the Gradescope template PDF
-    template_pdf_path = f"{args.output_dir}/template.pdf"
+    template_pdf_path = args.output_dir / "template.pdf"
     create_template_pdf(args.assignment_name, template_pdf_path)
     print(f"Template PDF created at: {template_pdf_path}")
+    _ = combine_pdfs(student_names, args.assignment_name, args.output_dir)
+    return 0
 
-    # Generate combined student submissions PDF
-    combine_pdfs(student_names, args.assignment_name, args.output_dir)
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

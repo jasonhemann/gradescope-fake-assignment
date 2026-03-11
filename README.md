@@ -14,8 +14,13 @@ make sync
 
 ---
 
-### **2. Run Smoke Tests**
-Run the built-in smoke checks against sample roster inputs:
+### **2. Run Quality Checks**
+Run linting, type-checking, and smoke checks:
+```bash
+make check
+```
+
+Run only the built-in smoke checks against sample roster inputs:
 ```bash
 make test
 ```
@@ -57,7 +62,7 @@ make clean
 This cleans:
 - `build/` and `dist/` directories
 - Python cache files (`__pycache__/`, `*.pyc`, etc.)
-- Testing caches (e.g., `.pytest_cache/`, `.mypy_cache/`)
+- QA caches (e.g., `.pytest_cache/`, `.ruff_cache/`, `.mypy_cache/`)
 - Temporary outputs (`output/` directory)
 
 ---
@@ -92,9 +97,17 @@ To install manually without `make`:
 sudo mv ./dist/gradescope_fake_assignment /usr/local/bin/
 ```
 
-### **5. Manual Testing**
+### **5. Manual Quality/Test Commands**
 
-Use `make test` for the default smoke checks.
+```bash
+make format
+make lint
+make lint-fix
+make typecheck
+make test
+make coverage
+make check
+```
 
 ### **Examples**
 1. Run the program with a valid test roster:
