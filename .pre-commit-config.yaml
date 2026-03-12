@@ -6,13 +6,21 @@ repos:
         entry: uv run --python 3.13 ruff format --check src tests
         language: system
         pass_filenames: false
+
       - id: ruff-check
         name: ruff check
         entry: uv run --python 3.13 ruff check src tests
         language: system
         pass_filenames: false
+
       - id: basedpyright
         name: basedpyright
         entry: uv run --python 3.13 basedpyright
+        language: system
+        pass_filenames: false
+
+      - id: smoke
+        name: smoke cli help
+        entry: uv run --python 3.13 python -m gradescope_fake_assignment --help
         language: system
         pass_filenames: false

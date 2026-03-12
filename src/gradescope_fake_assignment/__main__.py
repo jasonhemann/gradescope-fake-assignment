@@ -38,7 +38,9 @@ def _coerce_format(value: str) -> RosterFormat:
 def parse_arguments(argv: Sequence[str] | None = None) -> CliArgs:
     parser = argparse.ArgumentParser(description="Generate Gradescope PDF submissions.")
     _ = parser.add_argument("assignment_name", type=str, help="Name of the assignment.")
-    _ = parser.add_argument("csv_path", type=str, help="Path to the CSV file with student roster.")
+    _ = parser.add_argument(
+        "csv_path", type=str, help="Path to the CSV file with student roster."
+    )
     _ = parser.add_argument(
         "--format",
         type=str,
@@ -53,7 +55,9 @@ def parse_arguments(argv: Sequence[str] | None = None) -> CliArgs:
     return CliArgs(
         assignment_name=_coerce_str(getattr(namespace, "assignment_name", ""), ""),
         csv_path=Path(_coerce_str(getattr(namespace, "csv_path", ""), "")),
-        roster_format=_coerce_format(_coerce_str(getattr(namespace, "format", "standard"), "standard")),
+        roster_format=_coerce_format(
+            _coerce_str(getattr(namespace, "format", "standard"), "standard")
+        ),
         output_dir=Path(_coerce_str(getattr(namespace, "output_dir", "."), ".")),
     )
 
@@ -73,7 +77,9 @@ def _names_from_custom_roster(roster: DataFrame) -> list[str]:
     else:
         raise ValueError("CSV file is missing the required column(s): Name")
     return [
-        name for name in roster[source_column].fillna("").astype(str).str.strip().tolist() if name
+        name
+        for name in roster[source_column].fillna("").astype(str).str.strip().tolist()
+        if name
     ]
 
 
@@ -83,7 +89,9 @@ def load_roster(csv_path: Path, roster_format: RosterFormat) -> list[str]:
 
     roster = pd.read_csv(csv_path)
     if roster_format == "standard":
-        missing_columns = [col for col in ("First Name", "Last Name") if col not in roster.columns]
+        missing_columns = [
+            col for col in ("First Name", "Last Name") if col not in roster.columns
+        ]
         if missing_columns:
             raise ValueError(
                 f"CSV file is missing the required column(s): {', '.join(missing_columns)}"
@@ -101,7 +109,9 @@ def create_template_pdf(assignment_name: str, output_path: Path) -> None:
     pdf_canvas.save()
 
 
-def create_student_pdf(assignment_name: str, student_name: str, output_path: Path) -> None:
+def create_student_pdf(
+    assignment_name: str, student_name: str, output_path: Path
+) -> None:
     pdf_canvas = canvas.Canvas(str(output_path), pagesize=LETTER)
     pdf_canvas.drawString(100, 700, f"Assignment: {assignment_name}")
     pdf_canvas.drawString(100, 650, "Student:")
@@ -112,7 +122,9 @@ def create_student_pdf(assignment_name: str, student_name: str, output_path: Pat
     pdf_canvas.save()
 
 
-def combine_pdfs(student_names: list[str], assignment_name: str, output_dir: Path) -> Path:
+def combine_pdfs(
+    student_names: list[str], assignment_name: str, output_dir: Path
+) -> Path:
     combined_pdf_path = output_dir / "submissions.pdf"
     temp_student_pdfs: list[Path] = []
     combined_pdf = Pdf.new()
