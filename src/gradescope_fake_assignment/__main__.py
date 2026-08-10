@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
@@ -12,7 +12,13 @@ from pikepdf import Pdf
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 
-type RosterFormat = Literal["standard", "custom"]
+type RosterFormat = Literal["canvas", "banner"]
+type RosterLoader = Callable[[DataFrame], list[str]]
+
+CANVAS_NAME_COLUMN = "Student"
+CANVAS_ID_COLUMN = "ID"
+BANNER_NAME_COLUMN = "Full Name"
+BANNER_ID_COLUMN = "Student ID"
 
 
 @dataclass(slots=True)
@@ -30,7 +36,7 @@ def _coerce_str(value: object, default: str = "") -> str:
 
 
 def _coerce_format(value: str) -> RosterFormat:
-    if value not in {"standard", "custom"}:
+    if value not in {"canvas", "banner"}:
         raise ValueError(f"Unsupported roster format: {value}")
     return cast(RosterFormat, value)
 
@@ -44,9 +50,12 @@ def parse_arguments(argv: Sequence[str] | None = None) -> CliArgs:
     _ = parser.add_argument(
         "--format",
         type=str,
-        choices=["standard", "custom"],
-        default="standard",
-        help="Specify the format of the roster CSV.",
+        choices=["canvas", "banner"],
+        default="canvas",
+        help=(
+            "Roster CSV format: canvas reads a Canvas gradebook export; banner "
+            "reads a Banner Grade Entry workbook saved as CSV."
+        ),
     )
     _ = parser.add_argument(
         "--output_dir", type=str, default=".", help="Directory to save output PDFs."
@@ -56,48 +65,75 @@ def parse_arguments(argv: Sequence[str] | None = None) -> CliArgs:
         assignment_name=_coerce_str(getattr(namespace, "assignment_name", ""), ""),
         csv_path=Path(_coerce_str(getattr(namespace, "csv_path", ""), "")),
         roster_format=_coerce_format(
-            _coerce_str(getattr(namespace, "format", "standard"), "standard")
+            _coerce_str(getattr(namespace, "format", "canvas"), "canvas")
         ),
         output_dir=Path(_coerce_str(getattr(namespace, "output_dir", "."), ".")),
     )
 
 
-def _names_from_standard_roster(roster: DataFrame) -> list[str]:
-    first_name_series = roster["First Name"].fillna("").astype(str)
-    last_name_series = roster["Last Name"].fillna("").astype(str)
-    combined_names = (first_name_series + " " + last_name_series).str.strip()
-    return [name for name in combined_names.tolist() if name]
-
-
-def _names_from_custom_roster(roster: DataFrame) -> list[str]:
-    if "Name" in roster.columns:
-        source_column = "Name"
-    elif "Full Name" in roster.columns:
-        source_column = "Full Name"
-    else:
-        raise ValueError("CSV file is missing the required column(s): Name")
-    return [
-        name
-        for name in roster[source_column].fillna("").astype(str).str.strip().tolist()
-        if name
+def _require_columns(
+    roster: DataFrame, roster_format: RosterFormat, required_columns: tuple[str, ...]
+) -> None:
+    missing_columns = [
+        column for column in required_columns if column not in roster.columns
     ]
+    if missing_columns:
+        missing = ", ".join(missing_columns)
+        message = f"{roster_format.title()} CSV file is missing the required column(s): {missing}"
+        raise ValueError(message)
+
+
+def _format_last_first_name(raw_name: str) -> str:
+    stripped_name = raw_name.strip()
+    last_name, separator, first_name = stripped_name.partition(",")
+    if not separator:
+        return stripped_name
+
+    ordered_parts = [first_name.strip(), last_name.strip()]
+    return " ".join(part for part in ordered_parts if part)
+
+
+def _names_from_canvas_roster(roster: DataFrame) -> list[str]:
+    _require_columns(roster, "canvas", (CANVAS_NAME_COLUMN, CANVAS_ID_COLUMN))
+
+    raw_names = roster[CANVAS_NAME_COLUMN].fillna("").astype(str).str.strip().tolist()
+    canvas_ids = roster[CANVAS_ID_COLUMN].fillna("").astype(str).str.strip().tolist()
+
+    return [
+        _format_last_first_name(name)
+        for name, canvas_id in zip(raw_names, canvas_ids, strict=True)
+        if name and canvas_id and name.casefold() != "points possible"
+    ]
+
+
+def _names_from_banner_roster(roster: DataFrame) -> list[str]:
+    _require_columns(roster, "banner", (BANNER_NAME_COLUMN, BANNER_ID_COLUMN))
+
+    raw_names = roster[BANNER_NAME_COLUMN].fillna("").astype(str).str.strip().tolist()
+    student_ids = roster[BANNER_ID_COLUMN].fillna("").astype(str).str.strip().tolist()
+
+    return [
+        _format_last_first_name(name)
+        for name, student_id in zip(raw_names, student_ids, strict=True)
+        if name and student_id
+    ]
+
+
+ROSTER_LOADERS: dict[RosterFormat, RosterLoader] = {
+    "canvas": _names_from_canvas_roster,
+    "banner": _names_from_banner_roster,
+}
 
 
 def load_roster(csv_path: Path, roster_format: RosterFormat) -> list[str]:
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file '{csv_path}' does not exist.")
+    if csv_path.suffix.casefold() != ".csv":
+        message = "Roster input must be a CSV file. Convert Excel workbooks to CSV before running this program."
+        raise ValueError(message)
 
     roster = pd.read_csv(csv_path)
-    if roster_format == "standard":
-        missing_columns = [
-            col for col in ("First Name", "Last Name") if col not in roster.columns
-        ]
-        if missing_columns:
-            raise ValueError(
-                f"CSV file is missing the required column(s): {', '.join(missing_columns)}"
-            )
-        return _names_from_standard_roster(roster)
-    return _names_from_custom_roster(roster)
+    return ROSTER_LOADERS[roster_format](roster)
 
 
 def create_template_pdf(assignment_name: str, output_path: Path) -> None:
@@ -147,9 +183,7 @@ def combine_pdfs(
     return combined_pdf_path
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    print("Generating Gradescope PDFs...")
-    args = parse_arguments(argv)
+def run(args: CliArgs) -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -163,6 +197,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Template PDF created at: {template_pdf_path}")
     _ = combine_pdfs(student_names, args.assignment_name, args.output_dir)
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_arguments(argv)
+    print("Generating Gradescope PDFs...")
+    return run(args)
 
 
 if __name__ == "__main__":

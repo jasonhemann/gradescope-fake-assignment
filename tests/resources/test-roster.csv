@@ -1,3 +1,4 @@
-First Name,Last Name,SID,Email,Role,Section
-Tommy,Thompson,12345678,tommy.thompson@foo.edu,Student,2024_FALL_CSAS2123AA Intro Object-Orient Design I
-Timmy,Thompson,12345679,timmy.thompson@foo.edu,Student,2024_FALL_CSAS2123AA Intro Object-Orient Design I
+Student,ID,SIS User ID,SIS Login ID,Section,Assignments Current Points
+    Points Possible,,,,,(read only)
+"Thompson, Tommy",101,12345678,tommy.thompson@foo.edu,2024_FALL_CSAS2123AA Intro Object-Orient Design I,(read only)
+"Thompson, Timmy",102,12345679,timmy.thompson@foo.edu,2024_FALL_CSAS2123AA Intro Object-Orient Design I,(read only)

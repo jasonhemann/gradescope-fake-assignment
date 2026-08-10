@@ -41,14 +41,19 @@ Users can run that binary directly on the same OS/architecture without setting u
 ---
 
 ### **4. Install the Executable**
-Install the executable to `/usr/local/bin` for system-wide use:
+Install the executable to `$HOME/.local/bin`:
 ```bash
 make install
 ```
 
+Set `INSTALL_DIR` to use another destination:
+```bash
+make install INSTALL_DIR=/usr/local/bin
+```
+
 Once installed, you can run the program directly:
 ```bash
-gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --format standard --output_dir ./output
+gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --format canvas --output_dir ./output
 ```
 
 ---
@@ -80,7 +85,7 @@ uv sync --python 3.13
 ### **2. Manual Execution**
 If you need to run the program manually (e.g., without building the executable):
 ```bash
-uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --format standard --output_dir ./output
+uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --format canvas --output_dir ./output
 ```
 
 ### **3. Manual Build**
@@ -94,7 +99,8 @@ The executable will be created in the `./dist/` directory.
 ### **4. Manual Installation**
 To install manually without `make`:
 ```bash
-sudo mv ./dist/gradescope_fake_assignment /usr/local/bin/
+mkdir -p "$HOME/.local/bin"
+install -m 755 ./dist/gradescope_fake_assignment "$HOME/.local/bin/gradescope_fake_assignment"
 ```
 
 ### **5. Manual Quality/Test Commands**
@@ -112,13 +118,33 @@ make check
 ### **Examples**
 1. Run the program with a valid test roster:
    ```bash
-   uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --format standard --output_dir ./output
+   uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster.csv --format canvas --output_dir ./output
    ```
 
-2. Run with a malformed roster file to test error handling:
+2. Run the program with a Banner export:
    ```bash
-   uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster-bad-columns.csv --format standard --output_dir ./output
+   uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster-banner.csv --format banner --output_dir ./output
    ```
+
+3. Run with a malformed roster file to test error handling:
+   ```bash
+   uv run --python 3.13 python -m gradescope_fake_assignment "Assignment 1" ./tests/resources/test-roster-bad-columns.csv --format canvas --output_dir ./output
+   ```
+
+### **Supported Roster Formats**
+
+This program accepts CSV files only. Converting an Excel workbook to CSV,
+downloading Canvas data, and generating photo rosters are separate operations.
+
+- `canvas`: a Canvas gradebook CSV export. It requires `Student` and `ID`
+  columns, converts names from `Last, First`, and ignores the gradebook's
+  identity-less `Points Possible` row.
+- `banner`: a Banner Grade Entry/final-grade-template workbook saved from Excel
+  as CSV. It requires `Full Name` and `Student ID` columns and converts names
+  from `Last, First`.
+
+The Banner Class List workbook, raw `.xls`/`.xlsx` files, Gradescope membership
+exports, Blackboard exports, and headerless clipboard data are not supported.
 
 ---
 
@@ -136,7 +162,9 @@ project-root/
 │       ├── __init__.py
 │       └── __main__.py
 ├── tests/
+│   ├── test_main.py
 │   ├── resources/
+│   │   ├── test-roster-banner.csv
 │   │   ├── test-roster.csv
 │   │   ├── bad-file-invalid.csv
 │   │   └── test-roster-bad-columns.csv

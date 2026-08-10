@@ -4,7 +4,9 @@ UV ?= uv
 PYTHON_VERSION ?= 3.13
 APP_NAME := gradescope_fake_assignment
 ENTRYPOINT := src/gradescope_fake_assignment/__main__.py
-TEST_ROSTER := tests/resources/test-roster.csv
+INSTALL_DIR ?= $(HOME)/.local/bin
+CANVAS_ROSTER := tests/resources/test-roster.csv
+BANNER_ROSTER := tests/resources/test-roster-banner.csv
 BAD_ROSTER := tests/resources/test-roster-bad-columns.csv
 
 sync:
@@ -24,18 +26,24 @@ typecheck: sync
 
 # Smoke-check the CLI with good and bad roster inputs.
 test: sync
+	$(UV) run --python $(PYTHON_VERSION) pytest -q
 	@tmp_dir=$$(mktemp -d); \
-		echo "Running smoke checks in $$tmp_dir"; \
-		$(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(TEST_ROSTER)" --format standard --output_dir "$$tmp_dir"; \
-		test -f "$$tmp_dir/template.pdf"; \
-		test -f "$$tmp_dir/submissions.pdf"; \
-		bad_out=$$($(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(BAD_ROSTER)" --format standard --output_dir "$$tmp_dir" 2>&1 || true); \
-		echo "$$bad_out" | grep -q "missing the required column"; \
-		rm -rf "$$tmp_dir"
+			echo "Running smoke checks in $$tmp_dir"; \
+			canvas_dir=$$tmp_dir/canvas; \
+			banner_dir=$$tmp_dir/banner; \
+			mkdir -p "$$canvas_dir" "$$banner_dir"; \
+			$(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(CANVAS_ROSTER)" --format canvas --output_dir "$$canvas_dir"; \
+			test -f "$$canvas_dir/template.pdf"; \
+			test -f "$$canvas_dir/submissions.pdf"; \
+			$(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(BANNER_ROSTER)" --format banner --output_dir "$$banner_dir"; \
+			test -f "$$banner_dir/template.pdf"; \
+			test -f "$$banner_dir/submissions.pdf"; \
+			bad_out=$$($(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(BAD_ROSTER)" --format canvas --output_dir "$$tmp_dir" 2>&1 || true); \
+			echo "$$bad_out" | grep -q "missing the required column"; \
+			rm -rf "$$tmp_dir"
 
 coverage:
 	@echo "Coverage target (warn-only in wave 1): 80%"
-	@echo "No dedicated pytest suite in this repo yet; using smoke checks via 'make test'."
 	@$(MAKE) test
 
 check: lint typecheck test
@@ -44,7 +52,8 @@ build: sync
 	$(UV) run --python $(PYTHON_VERSION) pyinstaller --onefile $(ENTRYPOINT) --name $(APP_NAME)
 
 install: build
-	sudo mv ./dist/$(APP_NAME) /usr/local/bin/
+	mkdir -p "$(INSTALL_DIR)"
+	install -m 755 ./dist/$(APP_NAME) "$(INSTALL_DIR)/$(APP_NAME)"
 
 clean:
 	rm -rf build dist *.spec output .pytest_cache .mypy_cache .ruff_cache
