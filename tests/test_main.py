@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from gradescope_fake_assignment.__main__ import load_roster, main, parse_arguments
+from gradescope_fake_assignment.__main__ import main, parse_arguments
+from gradescope_fake_assignment.domain import Student
+from gradescope_fake_assignment.roster import CsvTable, load_roster, parse_roster
 
 TEST_RESOURCES = Path(__file__).parent / "resources"
 
@@ -14,15 +16,54 @@ def test_parse_arguments_defaults_to_canvas() -> None:
 
 
 def test_load_roster_supports_canvas_gradebook_exports() -> None:
-    student_names = load_roster(TEST_RESOURCES / "test-roster.csv", "canvas")
+    students = load_roster(TEST_RESOURCES / "test-roster.csv", "canvas")
 
-    assert student_names == ["Tommy Thompson", "Timmy Thompson"]
+    assert students == (
+        Student(roster_id="101", display_name="Tommy Thompson"),
+        Student(roster_id="102", display_name="Timmy Thompson"),
+    )
 
 
 def test_load_roster_supports_banner_exports() -> None:
-    student_names = load_roster(TEST_RESOURCES / "test-roster-banner.csv", "banner")
+    students = load_roster(TEST_RESOURCES / "test-roster-banner.csv", "banner")
 
-    assert student_names == ["Tommy Thompson", "Timmy Thompson"]
+    assert students == (
+        Student(roster_id="12345678", display_name="Tommy Thompson"),
+        Student(roster_id="12345679", display_name="Timmy Thompson"),
+    )
+
+
+def test_load_roster_preserves_leading_zero_ids(tmp_path: Path) -> None:
+    roster_path = tmp_path / "banner.csv"
+    roster_path.write_text(
+        'Full Name,Student ID\n"Doe, Jane",001234\n', encoding="utf-8"
+    )
+
+    students = load_roster(roster_path, "banner")
+
+    assert students == (Student(roster_id="001234", display_name="Jane Doe"),)
+
+
+def test_parse_canvas_roster_filters_nonstudents_and_preserves_order() -> None:
+    table = CsvTable(
+        columns=("Student", "ID"),
+        rows=(
+            (" Points Possible ", "ignored"),
+            ("Already Ordered", "001"),
+            ("Doe, Jane", "002"),
+            ("Missing Identifier", ""),
+            ("", "003"),
+            ("Doe, Jane", "004"),
+        ),
+    )
+
+    students = parse_roster(table, "canvas")
+
+    assert students == (
+        Student(roster_id="001", display_name="Already Ordered"),
+        Student(roster_id="002", display_name="Jane Doe"),
+        Student(roster_id="004", display_name="Jane Doe"),
+    )
 
 
 def test_load_roster_canvas_requires_gradebook_columns() -> None:

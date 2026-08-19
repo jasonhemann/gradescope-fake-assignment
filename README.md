@@ -160,7 +160,9 @@ project-root/
 ├── src/
 │   └── gradescope_fake_assignment/
 │       ├── __init__.py
-│       └── __main__.py
+│       ├── __main__.py
+│       ├── domain.py
+│       └── roster.py
 ├── tests/
 │   ├── test_main.py
 │   ├── resources/
