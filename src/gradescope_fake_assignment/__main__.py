@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
-from pikepdf import Pdf
-from reportlab.lib.pagesizes import LETTER
-from reportlab.pdfgen import canvas
-
-from gradescope_fake_assignment.domain import CliArgs, Roster, RosterFormat
+from gradescope_fake_assignment.domain import (
+    CliArgs,
+    GeneratedFiles,
+    RenderedDocuments,
+    RosterFormat,
+)
+from gradescope_fake_assignment.pdf import render_documents
 from gradescope_fake_assignment.roster import load_roster
 
 
@@ -55,72 +58,36 @@ def parse_arguments(argv: Sequence[str] | None = None) -> CliArgs:
     )
 
 
-def create_template_pdf(assignment_name: str, output_path: Path) -> None:
-    pdf_canvas = canvas.Canvas(str(output_path), pagesize=LETTER)
-    pdf_canvas.drawString(100, 700, f"Assignment: {assignment_name}")
-    pdf_canvas.drawString(100, 650, "Student:")
-    pdf_canvas.line(150, 645, 400, 645)
-    pdf_canvas.showPage()
-    pdf_canvas.save()
+def _write_documents(documents: RenderedDocuments, output_dir: Path) -> GeneratedFiles:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    template_pdf_path = output_dir / "template.pdf"
+    submissions_pdf_path = output_dir / "submissions.pdf"
+    _ = template_pdf_path.write_bytes(documents.template_pdf)
+    _ = submissions_pdf_path.write_bytes(documents.submissions_pdf)
+    return GeneratedFiles(
+        template_pdf=template_pdf_path,
+        submissions_pdf=submissions_pdf_path,
+    )
 
 
-def create_student_pdf(
-    assignment_name: str, student_name: str, output_path: Path
-) -> None:
-    pdf_canvas = canvas.Canvas(str(output_path), pagesize=LETTER)
-    pdf_canvas.drawString(100, 700, f"Assignment: {assignment_name}")
-    pdf_canvas.drawString(100, 650, "Student:")
-    text_width = pdf_canvas.stringWidth(student_name, "Helvetica", 12)
-    pdf_canvas.drawString(150, 650, student_name)
-    pdf_canvas.line(150, 645, 150 + text_width, 645)
-    pdf_canvas.showPage()
-    pdf_canvas.save()
-
-
-def combine_pdfs(students: Roster, assignment_name: str, output_dir: Path) -> Path:
-    combined_pdf_path = output_dir / "submissions.pdf"
-    temp_student_pdfs: list[Path] = []
-    combined_pdf = Pdf.new()
-
-    for idx, student in enumerate(students):
-        student_name = student.display_name
-        safe_student_name = student_name.replace(" ", "_").replace("/", "_")
-        student_pdf_path = output_dir / f"{safe_student_name}_{idx}_submission.pdf"
-        temp_student_pdfs.append(student_pdf_path)
-        create_student_pdf(assignment_name, student_name, student_pdf_path)
-        with Pdf.open(student_pdf_path) as student_pdf:
-            combined_pdf.pages.append(student_pdf.pages[0])
-
-    combined_pdf.save(combined_pdf_path)
-
-    for pdf_path in temp_student_pdfs:
-        if pdf_path.exists():
-            pdf_path.unlink()
-
-    print(f"Submissions PDF created at: {combined_pdf_path}")
-    return combined_pdf_path
-
-
-def run(args: CliArgs) -> int:
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        students = load_roster(args.csv_path, args.roster_format)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"Error: {exc}")
-        return 1
-
-    template_pdf_path = args.output_dir / "template.pdf"
-    create_template_pdf(args.assignment_name, template_pdf_path)
-    print(f"Template PDF created at: {template_pdf_path}")
-    _ = combine_pdfs(students, args.assignment_name, args.output_dir)
-    return 0
+def run(args: CliArgs) -> GeneratedFiles:
+    students = load_roster(args.csv_path, args.roster_format)
+    documents = render_documents(args.assignment_name, students)
+    return _write_documents(documents, args.output_dir)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_arguments(argv)
     print("Generating Gradescope PDFs...")
-    return run(args)
+    try:
+        generated_files = run(args)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Template PDF created at: {generated_files.template_pdf}")
+    print(f"Submissions PDF created at: {generated_files.submissions_pdf}")
+    return 0
 
 
 if __name__ == "__main__":

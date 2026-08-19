@@ -162,6 +162,7 @@ project-root/
 │       ├── __init__.py
 │       ├── __main__.py
 │       ├── domain.py
+│       ├── pdf.py
 │       └── roster.py
 ├── tests/
 │   ├── test_main.py

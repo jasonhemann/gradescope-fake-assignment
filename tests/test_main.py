@@ -1,9 +1,12 @@
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
-from gradescope_fake_assignment.__main__ import main, parse_arguments
-from gradescope_fake_assignment.domain import Student
+from gradescope_fake_assignment.__main__ import main, parse_arguments, run
+from gradescope_fake_assignment.domain import CliArgs, Student
+from gradescope_fake_assignment.pdf import render_documents
 from gradescope_fake_assignment.roster import CsvTable, load_roster, parse_roster
 
 TEST_RESOURCES = Path(__file__).parent / "resources"
@@ -88,7 +91,52 @@ def test_load_roster_rejects_excel_workbooks(tmp_path: Path) -> None:
         _ = load_roster(workbook_path, "banner")
 
 
-def test_main_creates_outputs_for_banner_roster(tmp_path: Path) -> None:
+def _page_text(pdf_bytes: bytes) -> tuple[tuple[str, ...], ...]:
+    reader = PdfReader(BytesIO(pdf_bytes))
+    return tuple(
+        tuple(line for line in (page.extract_text() or "").splitlines() if line)
+        for page in reader.pages
+    )
+
+
+def test_render_documents_is_deterministic_and_preserves_page_order() -> None:
+    students = (
+        Student(roster_id="101", display_name="Tommy Thompson"),
+        Student(roster_id="102", display_name="Timmy Thompson"),
+    )
+
+    documents = render_documents("Assignment 1", students)
+
+    assert documents == render_documents("Assignment 1", students)
+    assert _page_text(documents.template_pdf) == (
+        ("Assignment: Assignment 1", "Student:"),
+    )
+    assert _page_text(documents.submissions_pdf) == (
+        ("Assignment: Assignment 1", "Student:", "Tommy Thompson"),
+        ("Assignment: Assignment 1", "Student:", "Timmy Thompson"),
+    )
+
+
+def test_run_returns_generated_files_without_printing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output_dir = tmp_path / "nested" / "output"
+    args = CliArgs(
+        assignment_name="Assignment 1",
+        csv_path=TEST_RESOURCES / "test-roster-banner.csv",
+        roster_format="banner",
+        output_dir=output_dir,
+    )
+
+    generated_files = run(args)
+
+    assert generated_files.template_pdf == output_dir / "template.pdf"
+    assert generated_files.submissions_pdf == output_dir / "submissions.pdf"
+    assert capsys.readouterr() == ("", "")
+
+
+def test_main_creates_only_final_outputs_for_banner_roster(tmp_path: Path) -> None:
+    output_dir = tmp_path / "nested" / "output"
     exit_code = main(
         [
             "Assignment 1",
@@ -96,10 +144,34 @@ def test_main_creates_outputs_for_banner_roster(tmp_path: Path) -> None:
             "--format",
             "banner",
             "--output_dir",
-            str(tmp_path),
+            str(output_dir),
         ]
     )
 
     assert exit_code == 0
-    assert (tmp_path / "template.pdf").is_file()
-    assert (tmp_path / "submissions.pdf").is_file()
+    assert {path.name for path in output_dir.iterdir()} == {
+        "template.pdf",
+        "submissions.pdf",
+    }
+
+
+def test_invalid_roster_does_not_create_output_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    output_dir = tmp_path / "nested" / "output"
+
+    exit_code = main(
+        [
+            "Assignment 1",
+            str(TEST_RESOURCES / "test-roster-bad-columns.csv"),
+            "--format",
+            "canvas",
+            "--output_dir",
+            str(output_dir),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert not output_dir.exists()
+    assert "Canvas CSV file is missing the required column(s)" in captured.err

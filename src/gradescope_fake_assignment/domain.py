@@ -22,3 +22,21 @@ class CliArgs:
     csv_path: Path
     roster_format: RosterFormat
     output_dir: Path
+
+
+@dataclass(frozen=True, slots=True)
+class PageSpec:
+    assignment_name: str
+    student_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedDocuments:
+    template_pdf: bytes
+    submissions_pdf: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedFiles:
+    template_pdf: Path
+    submissions_pdf: Path
