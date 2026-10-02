@@ -28,8 +28,8 @@ typecheck: sync
 test: sync
 	$(UV) run --python $(PYTHON_VERSION) pytest -q
 	@set -eu; \
-				tmp_dir=$$(mktemp -d); \
-				trap 'rm -rf "$$tmp_dir"' EXIT; \
+			tmp_dir=$$(mktemp -d); \
+			trap 'rm -rf "$$tmp_dir"' EXIT; \
 			echo "Running smoke checks in $$tmp_dir"; \
 			canvas_dir=$$tmp_dir/canvas; \
 			banner_dir=$$tmp_dir/banner; \
@@ -40,12 +40,12 @@ test: sync
 			$(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(BANNER_ROSTER)" --format banner --output_dir "$$banner_dir"; \
 			test -f "$$banner_dir/template.pdf"; \
 			test -f "$$banner_dir/submissions.pdf"; \
-				if bad_out=$$($(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(BAD_ROSTER)" --format canvas --output_dir "$$tmp_dir/bad" 2>&1); then \
-						echo "Malformed roster unexpectedly succeeded" >&2; \
-						exit 1; \
-				fi; \
-				printf '%s\n' "$$bad_out" | grep -q "missing the required column"; \
-				test ! -e "$$tmp_dir/bad"
+			if bad_out=$$($(UV) run --python $(PYTHON_VERSION) python -m $(APP_NAME) "Assignment 1" "$(BAD_ROSTER)" --format canvas --output_dir "$$tmp_dir/bad" 2>&1); then \
+				echo "Malformed roster unexpectedly succeeded" >&2; \
+				exit 1; \
+			fi; \
+			printf '%s\n' "$$bad_out" | grep -q "missing the required column"; \
+			test ! -e "$$tmp_dir/bad"
 
 coverage:
 	@echo "Coverage target (warn-only in wave 1): 80%"
