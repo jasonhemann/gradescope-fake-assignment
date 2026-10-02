@@ -14,7 +14,7 @@ license = {text = "MIT"}
 
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -64,8 +64,8 @@ dev = [
     "basedpyright>=1.31.3",
     "pre-commit>=4.3.0",
     "pyinstaller>=6.11.0",
-    "pypdf>=6.0.0",
-    "pytest>=8.4.2",
+    "pypdf>=6.19.0",
+    "pytest>=9.0.3",
     "pytest-cov>=7.0.0",
     "ruff>=0.13.1",
 ]

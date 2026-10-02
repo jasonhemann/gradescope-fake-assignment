@@ -27,6 +27,10 @@ make test
 
 This validates a successful roster run and malformed-roster error handling.
 
+GitHub Actions runs the checks with the committed `uv.lock` on Linux and macOS.
+It also builds source and wheel distributions and verifies the standalone
+executable's PDF output for both roster formats.
+
 ---
 
 ### **3. Build the Executable**
