@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Python 3.13 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      PYTHON_VERSION: "3.13"
+      UV_LOCKED: "true"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.19"
+          python-version: "3.13"
+          enable-cache: true
+      - name: Sync locked dependencies
+        run: uv sync --locked --python 3.13
+      - name: Check formatting
+        run: uv run --locked --python 3.13 ruff format --check src tests
+      - name: Run quality and roster checks
+        run: make check
+      - name: Build source and wheel distributions
+        run: uv build --out-dir "$RUNNER_TEMP/package-dist"
+      - name: Build executable
+        run: make build
+      - name: Check executable outputs
+        run: |
+          set -euo pipefail
+          smoke_dir=$(mktemp -d)
+          trap 'rm -rf "$smoke_dir"' EXIT
+          for format in canvas banner; do
+            roster=tests/resources/test-roster.csv
+            if [ "$format" = banner ]; then
+              roster=tests/resources/test-roster-banner.csv
+            fi
+            ./dist/gradescope_fake_assignment "Assignment 1" "$roster" \
+              --format "$format" --output_dir "$smoke_dir/$format"
+          done
+          uv run --locked --python 3.13 python - "$smoke_dir" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from pypdf import PdfReader
+
+          output = Path(sys.argv[1])
+          for roster_format in ("canvas", "banner"):
+              roster_output = output / roster_format
+              assert {path.name for path in roster_output.iterdir()} == {
+                  "template.pdf", "submissions.pdf"
+              }
+              template = PdfReader(roster_output / "template.pdf")
+              assert len(template.pages) == 1
+              assert template.pages[0].extract_text().splitlines() == [
+                  "Assignment: Assignment 1", "Student:"
+              ]
+              submissions = PdfReader(roster_output / "submissions.pdf")
+              assert len(submissions.pages) == 2
+              for page, name in zip(
+                  submissions.pages, ("Tommy Thompson", "Timmy Thompson"), strict=True
+              ):
+                  assert page.extract_text().splitlines() == [
+                      "Assignment: Assignment 1", "Student:", name
+                  ]
+          PY
+          if ./dist/gradescope_fake_assignment "Assignment 1" \
+            tests/resources/test-roster-bad-columns.csv \
+            --output_dir "$smoke_dir/bad" >"$smoke_dir/bad.log" 2>&1; then
+            echo "Malformed roster unexpectedly succeeded" >&2
+            exit 1
+          fi
+          grep -q "missing the required column" "$smoke_dir/bad.log"
+          test ! -e "$smoke_dir/bad"
