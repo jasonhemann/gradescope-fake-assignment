@@ -14,7 +14,7 @@ license = {text = "MIT"}
 
 
 [build-system]
-requires = ["setuptools>=83.0.0", "wheel"]
+requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -64,8 +64,17 @@ dev = [
     "basedpyright>=1.31.3",
     "pre-commit>=4.3.0",
     "pyinstaller>=6.11.0",
-    "pypdf>=6.19.0",
+    "pypdf>=6.21.2",
     "pytest>=9.0.3",
     "pytest-cov>=7.0.0",
     "ruff>=0.13.1",
+]
+
+[tool.uv]
+# Keep transitive dependencies above the patched versions in Dependabot alerts.
+constraint-dependencies = [
+    "filelock>=4.2.1",
+    "pillow>=13.0.0",
+    "setuptools>=84.1.0",
+    "virtualenv>=21.14.9",
 ]
